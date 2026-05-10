@@ -1,374 +1,91 @@
-# 🚀 Distributed Notification System
+# Design Document: Distributed Notification System
 
-> Production-style **event-driven backend system** inspired by real-world architectures used at Netflix, Uber, and Amazon.
-
-This project demonstrates how to build a **scalable, fault-tolerant notification pipeline** using Kafka, worker consumers, retries, DLQ handling, and observability — the same core ideas used in modern distributed backend systems.
-
----
-
-## 🧠 System Design Overview
-
-The system processes notifications asynchronously to improve scalability, reliability, and performance.
-
-### High-Level Flow
-
-```text id="y4e9zd"
-Client → API (Producer) → Kafka → Worker (Consumer) → MongoDB
-                         ↘ Retry Topic
-                         ↘ Dead Letter Queue (DLQ)
-```
+**Author:** Manikanta Kovvuri  
+**Status:** Implemented / Reference Architecture  
 
 ---
 
-## 🧩 Architecture Diagram
-
-![architecture](./docs/architecture.png)
-
----
-
-## ⚡ Core Engineering Concepts
-
-* Event-Driven Architecture (EDA)
-* Producer / Consumer pattern
-* Kafka Consumer Groups
-* Horizontal Worker Scaling
-* Retry Queue Strategy
-* Dead Letter Queue (DLQ)
-* Idempotency (requestId-based)
-* Observability & Metrics
-* Fault-tolerant processing
+## Table of Contents
+1. [Context and Objective](#1-context-and-objective)
+2. [Goals and Non-Goals](#2-goals-and-non-goals)
+3. [System Architecture](#3-system-architecture)
+4. [Detailed Design & Core Flows](#4-detailed-design--core-flows)
+5. [Design Decisions and Trade-offs](#5-design-decisions-and-trade-offs)
+6. [Observability](#6-observability)
+7. [Future Considerations](#7-future-considerations)
+8. [Appendix: Local Development](#8-appendix-local-development)
 
 ---
 
-## 🏗️ Architecture Breakdown
+## 1. Context and Objective
+Modern distributed backend systems require reliable, asynchronous event processing to decouple core application flows from peripheral tasks. This document outlines the architecture for a highly scalable, fault-tolerant notification pipeline. By leveraging an event-driven architecture (EDA), the system ensures high throughput and reliability while gracefully handling transient failures and traffic spikes.
 
-### 1️⃣ API Service (Producer)
+## 2. Goals and Non-Goals
 
-Responsibilities:
+### Goals
+*   **Decoupling:** Isolate the API ingestion layer from the notification processing layer.
+*   **Fault Tolerance:** Implement robust retry mechanisms and Dead Letter Queues (DLQ) to prevent message loss.
+*   **Scalability:** Enable horizontal scaling of worker nodes to handle fluctuating loads linearly.
+*   **Idempotency:** Guarantee exactly-once processing semantics for notification requests, even in the event of retries.
+*   **Observability:** Expose granular metrics for system health, throughput, and error rates.
 
-* Accepts notification requests
-* Validates payload
-* Ensures idempotency using `requestId`
-* Stores initial notification state in MongoDB
-* Publishes events to Kafka
+### Non-Goals
+*   **Strict Global Ordering:** Processing order is not guaranteed across different notification events, prioritizing throughput over sequence.
+*   **Immediate Consistency:** The API will return an accepted state (eventual consistency) rather than waiting for synchronous notification delivery.
+*   **Vendor Integration Details:** Specific implementations of third-party SMS/Email providers are outside the scope of this core infrastructure design.
 
-Why this matters:
+## 3. System Architecture
 
-* API remains fast
-* Processing is decoupled
-* Safe retries possible
+The architecture follows a classic Producer-Broker-Consumer pattern, ensuring the API remains highly responsive while offloading heavy processing to asynchronous workers.
 
----
+### 3.1 High-LevelHere is the Markdown version, optimized for a GitHub `README.md`. It leads with the high-level architecture to show your L5 system design mindset, but I have also re-included a minimal, professional "Getting Started" section at the bottom so the repository remains functional for anyone reviewing your code.
 
-### 2️⃣ Kafka (Event Backbone)
+Just click the "Copy" button in the top right corner of the block below and paste it directly into your `README.md` file.
 
-Kafka acts as the async messaging layer connecting services.
+```markdown
+# Distributed Notification System
 
-**Topics used:**
+[![Architecture: Event-Driven](https://img.shields.io/badge/Architecture-Event--Driven-blue.svg)](https://en.wikipedia.org/wiki/Event-driven_architecture)
+[![Status: Reference Implementation](https://img.shields.io/badge/Status-Reference_Implementation-success.svg)]()
 
-* `notifications`
-* `notifications_retry`
-* `notifications_dlq`
+A production-grade, fault-tolerant notification pipeline designed to process events asynchronously at scale. This project serves as a reference architecture demonstrating core distributed system patterns including event streaming, horizontal scaling, consumer group balancing, and dead-letter queue (DLQ) management.
 
-**Benefits:**
+## 1. Context and Objective
 
-* Loose coupling between services
-* High throughput event processing
-* Durable message storage
-* Easy horizontal scaling
+Modern distributed backend systems require reliable, asynchronous event processing to decouple core application flows from peripheral tasks. This system implements a highly scalable notification pipeline utilizing an Event-Driven Architecture (EDA). It ensures high throughput and reliability while gracefully handling transient failures, network partitions, and traffic spikes without degrading the upstream API performance.
 
----
+## 2. Architecture Goals and Non-Goals
 
-### 3️⃣ Worker Service (Consumer)
+### Goals
+* **Decoupling:** Isolate the API ingestion layer from the notification processing layer.
+* **Fault Tolerance:** Implement robust retry mechanisms and Dead Letter Queues (DLQ) to prevent message loss.
+* **Scalability:** Enable linear horizontal scaling of worker nodes to handle fluctuating loads.
+* **Idempotency:** Guarantee exactly-once processing semantics for notification requests, preventing duplicate dispatches.
+* **Observability:** Expose granular Prometheus metrics for system health, throughput, and error rates.
 
-Workers consume events and process notifications asynchronously.
+### Non-Goals
+* **Strict Global Ordering:** Processing order is not guaranteed across different notification events, prioritizing throughput and concurrency over strict sequence.
+* **Immediate Consistency:** The API returns an accepted state (eventual consistency) rather than blocking synchronously for notification delivery.
 
-Processing flow:
+## 3. System Architecture
 
-1. Consume message from Kafka
-2. Process notification
-3. Update MongoDB status
-4. Retry on failure
-5. Move to DLQ after max retries
+The architecture follows a classic Producer-Broker-Consumer pattern, ensuring the API remains highly responsive while offloading I/O heavy processing to asynchronous workers.
 
-Workers are designed for horizontal scaling using Kafka consumer groups.
-
----
-
-### 4️⃣ MongoDB (Persistence Layer)
-
-Stores:
-
-* Notification payload
-* Processing status
-* Retry count
-* Metadata
-
-Acts as the source of truth for notification lifecycle.
-
----
-
-### 5️⃣ Observability (Prometheus)
-
-Metrics endpoint:
-
-```text id="1r41wz"
-/metrics
-```
-
-Example metrics:
-
-* `notifications_sent_total`
-* `notifications_retry_total`
-* `notifications_failed_total`
-* `kafka_messages_consumed_total`
-
-This enables monitoring, debugging, and scaling analysis.
-
----
-
-## 📊 Distributed System Flow
-
-1. Client sends notification request
-2. API validates + stores data in MongoDB
-3. API publishes event → Kafka
-4. Worker consumes event
-5. Success → mark as SENT
-6. Failure → send to Retry Topic
-7. Max retries exceeded → send to DLQ
-
----
-
-## 🚀 Scaling & Load Behavior
-
-This system is designed for horizontal scaling.
-
-### Scale workers
-
-```bash id="tx8ye1"
-docker compose up --scale worker=3
-```
-
-### What happens internally
-
-* Multiple workers join the same Kafka consumer group
-* Kafka automatically distributes partitions
-* Workload is balanced across workers
-* Throughput increases as workers scale
-
-### Example Observation
-
-| Workers | Processing Speed       |
-| ------- | ---------------------- |
-| 1       | Baseline               |
-| 3       | ~3x faster consumption |
-
-This demonstrates real-world distributed processing behavior.
-
----
-
-## ⚙️ Design Decisions
-
-### Why Kafka?
-
-* Decouples API and Worker services
-* Enables async processing
-* Supports scalable consumer groups
-* Durable event storage
-
-**Tradeoff:** Adds operational complexity.
-
----
-
-### Why Retry + DLQ?
-
-* Prevents message loss
-* Handles transient failures safely
-* Isolates permanently failed events
-
-**Tradeoff:** Additional topics and retry logic.
-
----
-
-### Why Worker-based Processing?
-
-* API stays responsive
-* Work can scale independently
-* Better reliability under load
-
-**Tradeoff:** Eventual consistency instead of immediate completion.
-
----
-
-### Why Idempotency?
-
-Using `requestId` prevents duplicate processing when retries happen.
-
-**Tradeoff:** Extra DB checks for safety.
-
----
-
-## 🧠 System Design Tradeoffs
-
-This project intentionally models real engineering tradeoffs instead of optimizing only for simplicity.
-
----
-
-### Async Processing vs Sync API
-
-**Decision:** Async via Kafka.
-
-**Pros:**
-
-* Fast API responses
-* Independent scaling
-* Failure isolation
-
-**Cons:**
-
-* Eventual consistency
-* Requires monitoring
-
----
-
-### Kafka vs Direct Service Calls
-
-**Decision:** Use Kafka.
-
-**Pros:**
-
-* Loose coupling
-* Replayability
-* High throughput
-
-**Cons:**
-
-* More infrastructure complexity
-
----
-
-### Retry Queue + DLQ Strategy
-
-**Decision:** Retry before DLQ.
-
-**Pros:**
-
-* Reliable processing
-* Safe failure handling
-
-**Cons:**
-
-* Extra operational logic
-
----
-
-### Horizontal Worker Scaling
-
-**Decision:** Consumer group scaling.
-
-**Pros:**
-
-* Linear throughput increase
-* Easy scaling
-
-**Cons:**
-
-* Ordering depends on partitions
-
----
-
-### Observability First
-
-**Decision:** Prometheus metrics.
-
-**Pros:**
-
-* Visibility into system health
-* Easier debugging and scaling
-
-**Cons:**
-
-* Extra monitoring setup
-
----
-
-## 📈 Scalability Characteristics
-
-| Component | Scaling Strategy                 |
-| --------- | -------------------------------- |
-| API       | Horizontal (multiple instances)  |
-| Kafka     | Partition-based scaling          |
-| Workers   | Consumer group scaling           |
-| MongoDB   | Replica sets / sharding (future) |
-
----
-
-## 🐳 Run Locally
-
-### Start all services
-
-```bash id="k7mxze"
-docker compose up --build
-```
-
-### Scale workers
-
-```bash id="0e7j4f"
-docker compose up --scale worker=3
-```
-
----
-
-## 📂 Project Structure
-
-```text id="2a3k9u"
-src/
- ├── api/            # REST API + Kafka producer
- ├── worker/         # Kafka consumer logic
- ├── config/         # Kafka / DB configuration
- ├── models/         # MongoDB schemas
- ├── metrics/        # Prometheus metrics
- ├── utils/          # helpers & retry logic
-```
-
----
-
-## 🔥 Engineering Highlights
-
-✔ Event-driven architecture
-✔ Kafka-based communication
-✔ Retry + DLQ reliability pattern
-✔ Horizontally scalable workers
-✔ Observability-first design
-✔ Dockerized microservices
-
----
-
-## 🧪 Future Improvements
-
-* Kubernetes deployment
-* Grafana dashboards
-* OpenTelemetry tracing
-* Rate limiting
-* Circuit breaker pattern
-* Email / SMS provider integration
-* Load testing (k6)
-
----
-
-## 👨‍💻 Author
-
-**Manikanta Kovvuri**
-
----
-
-## ⭐ Inspired By
-
-Modern distributed backend architectures used in:
-
-* Netflix
-* Uber
-* Amazon
-* Event-driven microservices systems
-
----
+```text
+[Client] 
+   │ (REST payload)
+   ▼
+[API Service (Producer)] ──(Validate, Save State)──> [MongoDB]
+   │
+   │ (Publish Event)
+   ▼
+[Kafka Broker] ◄──────────────┐
+   │                          │ (Retry/DLQ Routing)
+   ├─> Topic: notifications   │
+   ├─> Topic: retry_queue ────┤
+   └─> Topic: dlq             │
+   │                          │
+   ▼                          │
+[Worker Service (Consumer)] ──┘
+   │
+   └─(Update Status)──> [MongoDB]
