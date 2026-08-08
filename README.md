@@ -6,6 +6,7 @@
 ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)
 
+
 ### Production-Grade Distributed Notification Platform
 
 Relay is a production-grade distributed notification platform built to demonstrate modern backend engineering practices, including asynchronous messaging, fault-tolerant processing, horizontal scalability, distributed caching, and production observability.
@@ -19,24 +20,6 @@ Node.js • Kafka • Redis • MongoDB • Docker • Prometheus • Grafana
 ---
 
 > Designed to simulate large-scale notification infrastructure powering Email, SMS, and Push delivery pipelines.
-
-
-## 🏗️ System Architecture
-
-The following architecture illustrates how Relay decouples API request handling from notification processing using Apache Kafka, enabling reliable asynchronous execution, independent service scaling, and fault-tolerant message delivery.
-
-<p align="center">
-  <img src="./docs/relay-architecture.png" alt="Relay Architecture" width="1000">
-</p>
-
-### Request Flow
-
-1. A client submits a notification request to the Notification API.
-2. The API validates the request and publishes a message to an Apache Kafka topic.
-3. Kafka distributes messages across worker instances using consumer groups.
-4. Workers process notifications asynchronously and invoke the appropriate delivery channel.
-5. Delivery status, retries, and failures are persisted for auditing and recovery.
-6. Prometheus collects operational metrics that are visualized through Grafana dashboards.
 
 
 ## 📚 Table of Contents
@@ -53,6 +36,23 @@ The following architecture illustrates how Relay decouples API request handling 
 - [API Example](#-api-example)
 - [Future Enhancements](#️-future-enhancements)
 - [License](#-license)
+
+## 🏗️ System Architecture
+
+The following architecture illustrates how Relay decouples API request handling from notification processing using Apache Kafka, enabling reliable asynchronous execution, independent service scaling, and fault-tolerant message delivery.
+
+<p align="center">
+  <img src="./docs/relay-architecture.png" alt="Relay Architecture" width="900">
+</p>
+
+### Request Flow
+
+1. A client submits a notification request to the Notification API.
+2. The API validates the request and publishes a message to an Apache Kafka topic.
+3. Kafka distributes messages across worker instances using consumer groups.
+4. Workers process notifications asynchronously and invoke the appropriate delivery channel.
+5. Delivery status, retries, and failures are persisted for auditing and recovery.
+6. Prometheus collects operational metrics that are visualized through Grafana dashboards.
 
 
 
