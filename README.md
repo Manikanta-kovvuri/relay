@@ -26,7 +26,7 @@ Node.js • Kafka • Redis • MongoDB • Docker • Prometheus • Grafana
 The following architecture illustrates how Relay decouples API request handling from notification processing using Apache Kafka, enabling reliable asynchronous execution, independent service scaling, and fault-tolerant message delivery.
 
 <p align="center">
-  <img src="./docs/images/relay-architecture.png" alt="Relay Architecture" width="1000">
+  <img src="./docs/relay-architecture.png" alt="Relay Architecture" width="1000">
 </p>
 
 ### Request Flow
