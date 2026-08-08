@@ -46,7 +46,7 @@ The following architecture illustrates how Relay decouples API request handling 
 - [Feature Highlights](#-feature-highlights)
 - [System Architecture](#️-system-architecture)
 - [Technology Stack](#️-technology-stack)
-- [Codebase Structure](#-Codebase Structure)
+- [Codebase Structure](#-Codebase-Structure)
 - [Engineering Decisions](#-engineering-decisions)
 - [Observability](#-observability--monitoring)
 - [Quick Start](#-quick-start)
