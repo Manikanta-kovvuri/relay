@@ -1,273 +1,317 @@
-# 🚀 Distributed Notification System
+# 🚀 Relay
 
-## Overview
+![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)
+![Apache Kafka](https://img.shields.io/badge/Apache-Kafka-231F20?logo=apachekafka&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)
+![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)
 
-A scalable distributed notification platform designed to process high-volume notifications reliably using asynchronous event-driven architecture.
+### Production-Grade Distributed Notification Platform
 
-The system supports queue-based processing, fault tolerance, retries, dead-letter queues, observability, and horizontal worker scaling.
-
-This project was designed to simulate production-level notification systems similar to Firebase Cloud Messaging, Uber notification pipelines, and enterprise messaging systems.
-
----
-
-## Features
-
-### Notification Processing
-
-* Email notifications
-* SMS notifications
-* Push notification support
-* Asynchronous processing
-
-### Reliability
-
-* Retry mechanism
-* Dead Letter Queue (DLQ)
-* Idempotency support
-* Request deduplication
-
-### Scalability
-
-* Kafka producer-consumer architecture
-* Multi-worker processing
-* Horizontal scaling support
-* Consumer groups
-
-### Observability
-
-* Metrics collection
-* Prometheus integration
-* Grafana dashboards
-* Logging
-
-### Deployment
-
-* Dockerized services
-* MongoDB Atlas integration
-* Railway deployment support
+Relay is a production-grade distributed notification platform built to demonstrate modern backend engineering practices, including asynchronous messaging, fault-tolerant processing, horizontal scalability, distributed caching, and production observability.
 
 ---
 
-## System Architecture
+**Built With**
 
-```text
-                Client
-                   │
-                   ▼
-         Notification API
-             (Producer)
-                   │
-                   ▼
-               Kafka Queue
-                   │
-      ┌────────────┼────────────┐
-      │            │            │
-      ▼            ▼            ▼
- Worker-1      Worker-2     Worker-3
-      │            │            │
-      └────────────┼────────────┘
-                   ▼
-               MongoDB
-                   │
-                   ▼
-          Metrics (/metrics)
-                   │
-                   ▼
-             Prometheus
-                   │
-                   ▼
-               Grafana
-```
+Node.js • Kafka • Redis • MongoDB • Docker • Prometheus • Grafana
 
 ---
 
-## Tech Stack
+> Designed to simulate large-scale notification infrastructure powering Email, SMS, and Push delivery pipelines.
 
-Backend:
 
-* Node.js
-* Express.js
+## 🏗️ System Architecture
 
-Database:
+The following architecture illustrates how Relay decouples API request handling from notification processing using Apache Kafka, enabling reliable asynchronous execution, independent service scaling, and fault-tolerant message delivery.
 
-* MongoDB
-* MongoDB Atlas
+<p align="center">
+  <img src="relay-architecture.png" alt="Relay Architecture" width="1000">
+</p>
 
-Messaging:
+### Request Flow
 
-* Kafka
-* KafkaJS
+1. A client submits a notification request to the Notification API.
+2. The API validates the request and publishes a message to an Apache Kafka topic.
+3. Kafka distributes messages across worker instances using consumer groups.
+4. Workers process notifications asynchronously and invoke the appropriate delivery channel.
+5. Delivery status, retries, and failures are persisted for auditing and recovery.
+6. Prometheus collects operational metrics that are visualized through Grafana dashboards.
 
-Monitoring:
 
-* Prometheus
-* Grafana
+## 📚 Table of Contents
 
-Containerization:
+- [Problem Statement](#-problem-statement)
+- [Design Goals](#-design-goals)
+- [Feature Highlights](#-feature-highlights)
+- [System Architecture](#️-system-architecture)
+- [Technology Stack](#️-technology-stack)
+- [Codebase Structure](#-Codebase Structure)
+- [Engineering Decisions](#-engineering-decisions)
+- [Observability](#-observability--monitoring)
+- [Quick Start](#-quick-start)
+- [API Example](#-api-example)
+- [Future Enhancements](#️-future-enhancements)
+- [License](#-license)
 
-* Docker
-* Docker Compose
 
-Deployment:
 
-* Railway
+## 📖 Problem Statement
 
----
+Modern applications rely on multiple communication channels such as Email, SMS, and Push Notifications to deliver critical information to users. Processing these notifications synchronously can introduce high latency, tight service coupling, reduced availability, and poor scalability under increasing traffic.
 
-## Why Kafka?
+Relay addresses these challenges by adopting an event-driven architecture built on Apache Kafka, where notification requests are processed asynchronously through distributed worker services. This architecture improves reliability, enables horizontal scaling, isolates failures, and provides production-grade observability for high-throughput notification processing.
 
-Direct API-to-worker communication tightly couples services and creates bottlenecks.
 
-Kafka provides:
+## 🎯 Design Goals
 
-* Message persistence
-* Asynchronous processing
-* Consumer groups
-* Horizontal scaling
-* Fault tolerance
+Relay was designed with the following engineering objectives:
 
----
+- Build a fault-tolerant asynchronous notification pipeline.
+- Decouple producers from notification processing using Apache Kafka.
+- Support horizontal worker scaling through Kafka consumer groups.
+- Ensure reliable message delivery using retries, idempotency, and dead-letter queues (DLQs).
+- Provide production-grade observability through Prometheus metrics and Grafana dashboards.
+- Containerize the platform for reproducible local development and deployment.
 
-## Project Structure
 
+
+## ✨ Feature Highlights
+
+### ⚡ Event-Driven Processing
+
+- Asynchronous notification processing using Apache Kafka.
+- Producer-consumer architecture for decoupled services.
+- Support for Email, SMS, and Push notification channels.
+- Configurable notification templates and user preferences.
+
+
+### 🛡️ Reliability & Fault Tolerance
+
+- Retry queues for transient failures.
+- Dead Letter Queue (DLQ) for failed message isolation.
+- Idempotent request processing to prevent duplicate deliveries.
+- Request deduplication using unique request identifiers.
+
+
+### 📈 Scalability
+
+- Horizontal worker scaling using Kafka consumer groups.
+- Independent API and worker services for better resource utilization.
+- Stateless service design enabling containerized deployment.
+- Multi-tenant architecture supporting logical tenant isolation.
+
+
+### 🔐 Security
+
+- JWT-based authentication.
+- Role-Based Access Control (RBAC).
+- Secure REST API endpoints.
+- Tenant-aware request authorization.
+
+
+### 📊 Observability
+
+- Prometheus metrics for application monitoring.
+- Grafana dashboards for operational visibility.
+- Worker health monitoring.
+- Structured logging for production diagnostics.
+
+
+### 🚀 Deployment
+
+- Dockerized microservices.
+- Docker Compose local orchestration.
+- MongoDB Atlas support.
+- Railway cloud deployment.
+
+
+
+## 🛠️ Technology Stack
+
+| Layer | Technologies |
+|----------|--------------|
+| **Backend** | Node.js, Express.js |
+| **Messaging** | Apache Kafka, KafkaJS |
+| **Database** | MongoDB, MongoDB Atlas |
+| **Caching** | Redis |
+| **Authentication** | JWT |
+| **Containerization** | Docker, Docker Compose |
+| **Monitoring** | Prometheus, Grafana |
+| **Deployment** | Railway |
+
+
+
+## 📂 Codebase Structure
 ```text
 src
-├── api
-├── config
-├── metrics
-├── models
-├── worker
-├── services
-└── index.js
+├── api/          # REST API endpoints
+├── config/       # Kafka, database, and application configuration
+├── metrics/      # Prometheus metrics
+├── models/       # MongoDB models
+├── services/     # Business logic
+├── worker/       # Kafka consumers and notification processing
+└── index.js      # Application entry point
+
 ```
 
----
 
-## Local Installation
+## 🧠 Engineering Decisions
 
-### Clone repository
+Relay was designed by prioritizing scalability, reliability, and operational simplicity. The following architectural decisions were made to simulate production-grade distributed systems.
+
+### Why Apache Kafka?
+
+Kafka decouples API request handling from notification processing, allowing producers and consumers to scale independently. It also provides durable message persistence, consumer groups, and fault-tolerant asynchronous processing.
+
+
+
+### Why Asynchronous Processing?
+
+Sending notifications synchronously increases API latency and tightly couples request handling with downstream services. Processing notifications asynchronously improves responsiveness, isolates failures, and increases system throughput.
+
+
+
+### Why Consumer Groups?
+
+Kafka consumer groups enable horizontal worker scaling while ensuring each notification is processed exactly once within a consumer group, allowing throughput to increase simply by adding more worker instances.
+
+
+
+### Why Retry Queues & Dead Letter Queues?
+
+Transient failures are automatically retried, while permanently failed messages are moved to a Dead Letter Queue (DLQ). This prevents message loss, avoids blocking healthy traffic, and enables manual investigation when necessary.
+
+
+
+### Why Idempotency?
+
+Distributed systems must tolerate duplicate message delivery. Relay uses unique request identifiers to ensure repeated requests do not produce duplicate notifications.
+
+
+
+### Why Prometheus & Grafana?
+
+Operational visibility is essential in distributed systems. Prometheus collects application metrics while Grafana visualizes throughput, worker health, retry rates, consumer lag, and overall platform performance.
+
+
+
+### Why Docker?
+
+Docker provides a consistent runtime environment across development and deployment, simplifying local setup and making the platform easier to deploy and scale.
+
+
+
+
+## 📊 Observability & Monitoring
+
+Relay was designed with observability as a first-class concern to provide operational visibility into distributed message processing.
+
+### Metrics Collected
+
+- Notification throughput
+- Kafka consumer lag
+- Worker health status
+- Retry count
+- Dead Letter Queue (DLQ) activity
+- Failed notification count
+- Processing latency
+
+### Monitoring Stack
+
+- **Prometheus** collects application and infrastructure metrics.
+- **Grafana** visualizes dashboards for real-time monitoring and operational insights.
+
+This enables engineers to identify processing bottlenecks, monitor worker performance, detect message failures, and analyze overall system health.
+
+## 📋 Prerequisites
+
+Before running Relay locally, ensure the following tools are installed:
+
+- Node.js 18+
+- Docker Desktop
+- Apache Kafka
+- MongoDB
+- Git
+
+## 🚀 Quick Start
+
+### Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/distributed-notification-system.git
+git clone https://github.com/Manikanta-kovvuri/relay.git
 
-cd distributed-notification-system
+cd relay
 ```
 
-### Install dependencies
+### Install Dependencies
 
 ```bash
 npm install
 ```
 
----
-
-## Run using Docker
-
-Start all services:
+### Start the Platform
 
 ```bash
 docker compose up --build
 ```
 
-This starts:
+This launches:
 
-* API
-* Worker
-* Kafka
-* MongoDB
-* Zookeeper
-* Prometheus
-* Grafana
+- Notification API
+- Kafka
+- Zookeeper
+- Worker Services
+- MongoDB
+- Prometheus
+- Grafana
 
----
 
-## Local URLs
 
-API:
+## 📬 API Example
 
-```text
-http://localhost:3000
+### Send Notification
+
+**Endpoint**
+
+```http
+POST /api/send
 ```
 
-Prometheus:
-
-```text
-http://localhost:9090
-```
-
-Grafana:
-
-```text
-http://localhost:3001
-```
-
-Metrics:
-
-```text
-http://localhost:4000/metrics
-```
-
----
-
-## API Example
-
-POST:
-
-```text
-/api/send
-```
-
-Request:
+**Request**
 
 ```json
 {
-    "requestId":"123",
-    "to":"user@gmail.com",
-    "message":"Hello",
-    "channel":"email"
+  "requestId": "123",
+  "to": "user@gmail.com",
+  "message": "Hello",
+  "channel": "email"
 }
 ```
 
-Response:
+**Response**
 
 ```json
 {
-   "success": true,
-   "id":"xyz123"
+  "success": true,
+  "id": "xyz123"
 }
 ```
 
----
 
-## Scaling Workers
+## 🛣️ Future Enhancements
 
-Run multiple workers:
+- API Gateway
+- Kubernetes deployment
+- Distributed rate limiting using Redis
+- Exponential backoff retry strategy
+- OpenTelemetry distributed tracing
+- Notification scheduling
+- Multi-region deployment
+- CI/CD pipeline with GitHub Actions
 
-```bash
-docker compose up --scale worker=3
-```
 
-Kafka automatically distributes messages among workers using consumer groups.
 
----
+## 📄 License
 
-## Future Improvements
-
-* JWT Authentication
-* Role-Based Access Control (RBAC)
-* API key support
-* Exponential backoff retry strategy
-* Redis distributed rate limiting
-* Kubernetes deployment
-
----
-
-## Live Demo
-
-API:
-
-https://YOUR-RAILWAY-URL
-
-GitHub:
-
-https://github.com/Manikanta-kovvuri/distributed-notification-system
+Licensed under the MIT License.
