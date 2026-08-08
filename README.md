@@ -24,10 +24,10 @@ Node.js • Kafka • Redis • MongoDB • Docker • Prometheus • Grafana
 
 ## 📚 Table of Contents
 
+- [System Architecture](#️-system-architecture)
 - [Problem Statement](#-problem-statement)
 - [Design Goals](#-design-goals)
 - [Feature Highlights](#-feature-highlights)
-- [System Architecture](#️-system-architecture)
 - [Technology Stack](#️-technology-stack)
 - [Codebase Structure](#-Codebase-Structure)
 - [Engineering Decisions](#-engineering-decisions)
