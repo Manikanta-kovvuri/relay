@@ -1,26 +1,33 @@
 const express = require("express");
 const router = express.Router();
+const pino = require("pino");
+const logger = pino({ transport: { target: "pino-pretty", options: { colorize: true } } });
 const Notification = require("../models/notification.model");
 const { producer } = require("../config/kafka");
+const { authMiddleware, rbacMiddleware } = require("../middleware/auth.middleware");
+const rateLimiter = require("../middleware/rate-limit.middleware");
 
 /* ==============================
    SEND NOTIFICATION
 ============================== */
-router.post("/send", async (req, res) => {
+router.post("/send", authMiddleware, rbacMiddleware(["USER", "ADMIN", "OWNER"]), rateLimiter, async (req, res) => {
   try {
     const { requestId, to, message, channel } = req.body;
+    const tenantId = req.user.tenantId;
 
-    const existing = await Notification.findOne({ requestId });
+    const existing = await Notification.findOne({ tenantId, requestId });
 
     if (existing) {
-      return res.json({
+      return res.status(200).json({
         success: true,
+        id: existing._id,
         message: "Duplicate request ignored"
       });
     }
 
     const notification = await Notification.create({
       requestId,
+      tenantId,
       to,
       message,
       channel
@@ -45,7 +52,7 @@ router.post("/send", async (req, res) => {
     return res.json({ success: true, id: notification._id });
 
   } catch (err) {
-    console.error("Route error:", err);
+    logger.error({ err }, "Route error in /send");
     return res.status(500).json({ success: false });
   }
 });
@@ -53,12 +60,12 @@ router.post("/send", async (req, res) => {
 /* ==============================
    DEBUG ROUTE
 ============================== */
-router.get("/debug", async (req, res) => {
+router.get("/debug", authMiddleware, rbacMiddleware(["ADMIN", "OWNER"]), async (req, res) => {
   try {
-    const data = await Notification.find().sort({ createdAt: -1 });
+    const data = await Notification.find({ tenantId: req.user.tenantId }).sort({ createdAt: -1 });
     res.json(data);
   } catch (err) {
-    console.error(err);
+    logger.error({ err }, "Route error in /debug");
     res.status(500).json({ success: false });
   }
 });

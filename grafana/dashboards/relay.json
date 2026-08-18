@@ -1,0 +1,51 @@
+{
+  "title": "Relay Dashboard",
+  "panels": [
+    {
+      "title": "Notifications Sent",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(notifications_sent_total)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 }
+    },
+    {
+      "title": "Notifications Failed",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(notifications_failed_total)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 }
+    },
+    {
+      "title": "Current Queue",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "notifications_processing",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 }
+    },
+    {
+      "title": "Rate Limit Rejections",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate_limit_rejections_total",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    }
+  ],
+  "schemaVersion": 16,
+  "version": 1
+}

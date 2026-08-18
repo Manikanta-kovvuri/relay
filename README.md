@@ -1,317 +1,341 @@
-# 🚀 Relay
+# Relay
 
-![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)
-![Apache Kafka](https://img.shields.io/badge/Apache-Kafka-231F20?logo=apachekafka&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)
-![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)
+Relay is a highly reliable, distributed asynchronous notification platform designed to decouple ingestion from delivery while protecting downstream providers. It ensures that notifications are captured, queued, and processed robustly across horizontal workers without dropping requests.
 
+Node.js • Apache Kafka • Redis • MongoDB • Docker • Prometheus • Grafana
 
-### Production-Grade Distributed Notification Platform
+Relay demonstrates fundamental distributed systems concepts:
+- **Asynchronous event-driven processing**
+- **Horizontal worker scaling**
+- **At-least-once processing**
+- **Application-level idempotency**
+- **Retry and DLQ handling**
+- **Multi-tenant isolation**
+- **Redis-based rate limiting**
+- **Observability**
+- **Fault recovery**
 
-Relay is a production-grade distributed notification platform built to demonstrate modern backend engineering practices, including asynchronous messaging, fault-tolerant processing, horizontal scalability, distributed caching, and production observability.
+## Why Relay?
 
----
+In typical web applications, synchronous notification delivery creates severe coupling. When an API synchronously calls an email or SMS provider (like SendGrid or Twilio), provider latency spikes propagate directly to the application, tying up threads and degrading user experience. If the provider goes down, the API request fails and the notification is lost.
 
-**Built With**
+Relay separates ingestion from delivery. It safely persists the notification intent, acknowledges the client instantly, and publishes an event to Kafka. Scalable background workers consume these events to execute delivery at their own pace, automatically handling transient provider failures via retry schedulers and dead letter queues (DLQs).
 
-Node.js • Kafka • Redis • MongoDB • Docker • Prometheus • Grafana
+## Engineering Highlights
 
----
+- **Kafka Producer/Consumer Architecture**: Decouples the API layer from delivery mechanics.
+- **Kafka Consumer Groups**: Enables horizontal scaling; multiple workers can consume the same topic without duplicate processing.
+- **At-Least-Once Processing**: Kafka guarantees messages are delivered to workers at least once, ensuring no notification drops.
+- **Application-Level Idempotency**: Guard against duplicate requests via deterministic `tenantId` + `requestId` composite unique index in MongoDB.
+- **Redis Rate Limiting**: Distributed rate limiting prevents single tenants from noisy-neighbor behaviors.
+- **JWT Authentication & RBAC**: Secures endpoints and segregates access controls (USER, ADMIN, OWNER).
+- **Tenant Isolation**: Every database interaction and request is strictly scoped by `tenantId`.
+- **Retry Scheduling & Recoverable Leases**: Transient failures are scheduled for future retries. Schedulers use atomic lease claims (`findOneAndUpdate`) to prevent multiple workers from publishing the same retry event concurrently.
+- **Dead Letter Queue (DLQ)**: Messages that exceed `MAX_RETRIES` are permanently routed to a DLQ state for manual inspection.
+- **Exponential Backoff**: Prevents thundering herds against external providers during outages.
+- **Provider Abstraction**: A factory pattern resolves abstract `EMAIL` or `SMS` targets to specific strategies.
+- **Templates & Preferences**: Demonstrates user-level opt-outs and runtime variable interpolation.
+- **Prometheus & Grafana**: Exposes precise bounds-capped metrics (e.g., `notifications_sent_total`, `rate_limit_rejections_total`) to visualize throughput.
+- **Structured Pino Logging**: Ensures that high-cardinality values (like UUIDs) remain in search-friendly structured logs instead of causing label-explosion in Prometheus.
+- **Health/Readiness Semantics**: Strict dependency validation across Mongo, Redis, and Kafka brokers ensures Kubernetes or load balancers never route traffic to isolated pods.
+- **Graceful Shutdown**: Properly releases network sockets, timers, and Kafka consumers on exit.
 
-> Designed to simulate large-scale notification infrastructure powering Email, SMS, and Push delivery pipelines.
+## System Architecture
 
+```mermaid
+flowchart TD
+    Client([Client])
+    API[Relay API (Express)]
+    Auth[JWT / RBAC Middleware]
+    RateLimiter[Redis Rate Limiter]
+    DB[(MongoDB)]
+    Kafka[Kafka Broker]
+    Worker[Relay Worker(s)]
+    Providers[Provider Strategies (Email, SMS)]
+    Metrics[Prometheus & Grafana]
 
-## 📚 Table of Contents
+    Client -->|POST /send| API
+    API --> Auth
+    Auth --> RateLimiter
+    RateLimiter -->|Check Limits| Redis[(Redis)]
+    RateLimiter -->|Idempotency Check| DB
+    API -->|Save Notification| DB
+    API -->|Publish Event| Kafka
 
-- [System Architecture](#️-system-architecture)
-- [Problem Statement](#-problem-statement)
-- [Design Goals](#-design-goals)
-- [Feature Highlights](#-feature-highlights)
-- [Technology Stack](#️-technology-stack)
-- [Codebase Structure](#-Codebase-Structure)
-- [Engineering Decisions](#-engineering-decisions)
-- [Observability](#-observability--monitoring)
-- [Quick Start](#-quick-start)
-- [API Example](#-api-example)
-- [Future Enhancements](#️-future-enhancements)
-- [License](#-license)
+    Kafka -->|Consume (Group)| Worker
+    Worker -->|Read Preferences/Templates| DB
+    Worker -->|Route| Providers
+    Providers -->|Success / Fail| DB
 
-## 🏗️ System Architecture
+    Worker -.->|Update Metrics| Metrics
+    API -.->|Update Metrics| Metrics
 
-The following architecture illustrates how Relay decouples API request handling from notification processing using Apache Kafka, enabling reliable asynchronous execution, independent service scaling, and fault-tolerant message delivery.
+    subgraph Retry Architecture
+        WorkerScheduler[Retry Scheduler]
+        WorkerScheduler -->|Atomic Lease| DB
+        WorkerScheduler -->|Publish Retry| Kafka
+    end
+```
 
-<p align="center">
-  <img src="./docs/relay-architecture.png" alt="Relay Architecture" width="900">
-</p>
+## Request Lifecycle
 
-### Request Flow
+1. **Authentication**: The client passes a JWT.
+2. **Authorization**: Middleware validates RBAC rules and extracts the context `tenantId`.
+3. **Rate Limiting**: Redis increments the tenant's request count. If exceeded, a 429 response is returned immediately.
+4. **Idempotency**: MongoDB enforces a unique constraint on `{ tenantId, requestId }`. Duplicates receive a `200 OK` with the existing ID.
+5. **Persistence**: The notification is saved to MongoDB in a `QUEUED` state.
+6. **Publishing**: An event containing the notification `id` is pushed to the Kafka `notifications` topic.
+7. **Consumption**: A worker in the Kafka consumer group claims the message.
+8. **Resolution**: The worker looks up the user's preferences (e.g., opted-out channels) and notification templates.
+9. **Dispatch**: The abstract provider factory selects the implementation strategy (e.g., Email, SMS) and executes it.
+10. **Outcome**: The worker updates the MongoDB state to `SENT` or `FAILED`.
+11. **Retries**: Transient failures transition to `RETRYING`. A background lease-based scheduler wakes up, atomically claims the retry, and republishes it to Kafka with an exponential backoff.
+12. **DLQ**: If `MAX_RETRIES` (3) is exceeded, the notification is permanently marked as `DLQ`.
 
-1. A client submits a notification request to the Notification API.
-2. The API validates the request and publishes a message to an Apache Kafka topic.
-3. Kafka distributes messages across worker instances using consumer groups.
-4. Workers process notifications asynchronously and invoke the appropriate delivery channel.
-5. Delivery status, retries, and failures are persisted for auditing and recovery.
-6. Prometheus collects operational metrics that are visualized through Grafana dashboards.
+## Reliability Model
 
+Relay uses an at-least-once processing model with application-level idempotency.
 
+- **Why duplicate delivery happens**: In distributed systems (and Kafka explicitly), network partitions, worker crashes, or consumer rebalances can cause a message to be delivered more than once.
+- **Application-Level Idempotency**: By explicitly utilizing `{ tenantId: 1, requestId: 1 }` inside MongoDB, Relay natively ignores subsequent duplicate HTTP requests and subsequent duplicate Kafka consumptions by checking if a message was already processed.
+- **Retry behavior**: If a provider fails, the notification is set to `RETRYING`. A scheduler picks it up, marks it as `RETRY_PUBLISHING` (claiming the lease), and pushes it to Kafka.
+- **Recoverable retry claims**: If a worker crashes during retry publishing, its lease abandons. A cleanup mechanism automatically unlocks leases older than 60 seconds, returning them to `RETRYING` so another worker can claim them.
 
-## 📖 Problem Statement
+## Horizontal Scalability
 
-Modern applications rely on multiple communication channels such as Email, SMS, and Push Notifications to deliver critical information to users. Processing these notifications synchronously can introduce high latency, tight service coupling, reduced availability, and poor scalability under increasing traffic.
+- **Kafka Partitions**: The notification topic allows multiple workers to subscribe in parallel.
+- **Consumer Groups**: By sharing the `notification-workers` group, Kafka handles the partition distribution so no two workers process the same exact offset.
+- **Independent Scaling**: The API instances and Worker instances scale independently of each other.
+- **Concurrency Safety**: Workers independently run their own retry schedulers. The atomic MongoDB `findOneAndUpdate` guarantees only one worker can lease a specific retry record at a time.
 
-Relay addresses these challenges by adopting an event-driven architecture built on Apache Kafka, where notification requests are processed asynchronously through distributed worker services. This architecture improves reliability, enables horizontal scaling, isolates failures, and provides production-grade observability for high-throughput notification processing.
+## Multi-Tenant Security
 
+- **JWT & RBAC**: Every request mandates a valid token. Roles (USER, ADMIN, OWNER) enforce distinct operation boundaries.
+- **Tenant Isolation**: The `tenantId` is derived from the verified JWT payload, not the request body, preventing spoofing. Every MongoDB query uses this `tenantId` to ensure cross-tenant data leaks are impossible.
+- **Password Hashing**: User passwords utilize bcrypt with robust salt rounds.
 
-## 🎯 Design Goals
+## Distributed Rate Limiting
 
-Relay was designed with the following engineering objectives:
+- **Redis-Backed**: Local in-memory rate limiters fail in distributed setups. Relay utilizes Redis to synchronize limits across all horizontal API instances.
+- **Tenant-Scoped**: Rate limits are bucketed per `tenantId`, guaranteeing noisy-neighbor isolation.
+- **Failure Behavior**: If Redis is unavailable, requests gracefully bypass the rate limiter, preferring availability over strict suppression.
+- **Metrics Safety**: Rate limit increments strictly utilize bounded labels. The raw `tenantId` is deliberately excluded from the Prometheus counters to avoid cardinality explosions.
 
-- Build a fault-tolerant asynchronous notification pipeline.
-- Decouple producers from notification processing using Apache Kafka.
-- Support horizontal worker scaling through Kafka consumer groups.
-- Ensure reliable message delivery using retries, idempotency, and dead-letter queues (DLQs).
-- Provide production-grade observability through Prometheus metrics and Grafana dashboards.
-- Containerize the platform for reproducible local development and deployment.
+## Notification Processing
 
+- **Provider Abstraction**: Delivery logic is hidden behind a factory pattern, allowing dynamic swapping of implementations based on `channel`.
+- **Templates**: Centralized `Template` models provide text schemas that interpolate runtime variables.
+- **User Preferences**: Users can globally opt-out of specific channels via the `Preference` model. Relay dynamically intercepts and skips delivery if an opt-out is detected.
 
+*(Note: Currently, providers simulate delivery using `console.log` / mock behaviors rather than real external network payloads).*
 
-## ✨ Feature Highlights
+## Observability
 
-### ⚡ Event-Driven Processing
+- **Prometheus & Grafana**: Dedicated endpoints `/metrics` emit node performance and business logic statistics.
+- **Pino Structured Logs**: Deep context (e.g., UUIDs, request IDs, error stacks) are logged via standard JSON for SIEM / ELK stack ingestion.
+- **Cardinality Protection**: A key engineering decision in Relay is strict isolation of identifiers. `requestId` and `tenantId` are omitted from Prometheus labels and instead remain exclusively in Pino logs. This ensures Prometheus RAM utilization remains bounded over time.
 
-- Asynchronous notification processing using Apache Kafka.
-- Producer-consumer architecture for decoupled services.
-- Support for Email, SMS, and Push notification channels.
-- Configurable notification templates and user preferences.
+## Failure Scenarios
 
+| Failure | System behavior |
+|---|---|
+| Kafka unavailable | API marks notification as saved but readiness probe `GET /ready` begins failing with 503 HTTP status. |
+| Redis unavailable | Rate limiting is gracefully bypassed; API readiness probe returns 503 HTTP status. |
+| MongoDB unavailable | API readiness probe fails with 503; request ingestion fails loudly avoiding data loss. |
+| Worker crashes | Kafka consumer group automatically rebalances the partition to another healthy worker. |
+| Provider failure | Notification is marked `RETRYING` and scheduled with exponential backoff. |
+| Retry publish failure | Atomic lease times out; a healthy worker recovers the lease and retries. |
+| Maximum retries reached | Notification transitions to `DLQ` and halts processing. |
+| Duplicate request | Database unique constraint blocks insert. API returns 200 OK with the originally generated ID. |
 
-### 🛡️ Reliability & Fault Tolerance
+## Technology Stack
 
-- Retry queues for transient failures.
-- Dead Letter Queue (DLQ) for failed message isolation.
-- Idempotent request processing to prevent duplicate deliveries.
-- Request deduplication using unique request identifiers.
+| Layer | Technology | Purpose |
+|---|---|---|
+| Framework | Node.js / Express | Lightweight, async event-loop HTTP server |
+| Broker | Apache Kafka (KafkaJS) | Decoupled event distribution and log persistence |
+| Datastore | MongoDB (Mongoose) | Flexible document persistence and atomic state transitions |
+| Cache / Limits | Redis (ioredis) | High-speed distributed counter |
+| Security | JWT / bcrypt / Helmet | Authentication, RBAC, hashing, HTTP header security |
+| Observability | Prometheus / Grafana / Pino | Metrics aggregation, visualization, and structured logging |
+| Testing | Jest / supertest / mongo-memory-server | Isolated execution, endpoint simulation, and mocks |
 
+## Repository Structure
 
-### 📈 Scalability
-
-- Horizontal worker scaling using Kafka consumer groups.
-- Independent API and worker services for better resource utilization.
-- Stateless service design enabling containerized deployment.
-- Multi-tenant architecture supporting logical tenant isolation.
-
-
-### 🔐 Security
-
-- JWT-based authentication.
-- Role-Based Access Control (RBAC).
-- Secure REST API endpoints.
-- Tenant-aware request authorization.
-
-
-### 📊 Observability
-
-- Prometheus metrics for application monitoring.
-- Grafana dashboards for operational visibility.
-- Worker health monitoring.
-- Structured logging for production diagnostics.
-
-
-### 🚀 Deployment
-
-- Dockerized microservices.
-- Docker Compose local orchestration.
-- MongoDB Atlas support.
-- Railway cloud deployment.
-
-
-
-## 🛠️ Technology Stack
-
-| Layer | Technologies |
-|----------|--------------|
-| **Backend** | Node.js, Express.js |
-| **Messaging** | Apache Kafka, KafkaJS |
-| **Database** | MongoDB, MongoDB Atlas |
-| **Caching** | Redis |
-| **Authentication** | JWT |
-| **Containerization** | Docker, Docker Compose |
-| **Monitoring** | Prometheus, Grafana |
-| **Deployment** | Railway |
-
-
-
-## 📂 Codebase Structure
 ```text
-src
-├── api/          # REST API endpoints
-├── config/       # Kafka, database, and application configuration
-├── metrics/      # Prometheus metrics
-├── models/       # MongoDB models
-├── services/     # Business logic
-├── worker/       # Kafka consumers and notification processing
-└── index.js      # Application entry point
-
+CWD: relay/
+├── docker-compose.yml
+├── Dockerfile
+├── Dockerfile.worker
+├── eslint.config.js
+├── grafana
+│   ├── dashboards
+│   └── provisioning
+├── package.json
+├── prometheus.yml
+├── src
+│   ├── api
+│   │   ├── auth.routes.js
+│   │   └── notification.routes.js
+│   ├── config
+│   │   ├── db.js
+│   │   ├── kafka.js
+│   │   └── redis.js
+│   ├── index.js
+│   ├── metrics
+│   │   └── metrics.js
+│   ├── middleware
+│   │   ├── auth.middleware.js
+│   │   └── rate-limit.middleware.js
+│   ├── models
+│   │   ├── notification.model.js
+│   │   ├── preference.model.js
+│   │   ├── template.model.js
+│   │   └── user.model.js
+│   ├── services
+│   │   └── providers
+│   │       └── index.js
+│   └── worker
+│       └── worker.js
+└── tests
+    └── unit
+        ├── api.test.js
+        ├── auth.test.js
+        ├── models.test.js
+        ├── rate-limit.test.js
+        └── worker.test.js
 ```
 
+## Testing
 
-## 🧠 Engineering Decisions
+The system implements rigorous unit testing validating the fundamental architectural behaviors.
 
-Relay was designed by prioritizing scalability, reliability, and operational simplicity. The following architectural decisions were made to simulate production-grade distributed systems.
+**Current Result**:
+- **Test Suites**: 5
+- **Tests**: 8
+- **Coverage**: 54.37% (Stmts)
 
-### Why Apache Kafka?
+**What is Tested**:
+- **Authentication**: JWT signing, hashing, RBAC downgrading.
+- **Idempotency**: API behavior against deterministic duplicate requests.
+- **Models**: State constraints and transitions.
+- **Rate Limiting**: Distributed increments and HTTP 429 blockades.
+- **Worker Processing**: Resolution of preferences, templates, and provider target logic.
 
-Kafka decouples API request handling from notification processing, allowing producers and consumers to scale independently. It also provides durable message persistence, consumer groups, and fault-tolerant asynchronous processing.
+*(Coverage remains at ~54% focused on critical paths. Full external provider mocking remains a vector for future tests).*
 
+## Local Development
 
-
-### Why Asynchronous Processing?
-
-Sending notifications synchronously increases API latency and tightly couples request handling with downstream services. Processing notifications asynchronously improves responsiveness, isolates failures, and increases system throughput.
-
-
-
-### Why Consumer Groups?
-
-Kafka consumer groups enable horizontal worker scaling while ensuring each notification is processed exactly once within a consumer group, allowing throughput to increase simply by adding more worker instances.
-
-
-
-### Why Retry Queues & Dead Letter Queues?
-
-Transient failures are automatically retried, while permanently failed messages are moved to a Dead Letter Queue (DLQ). This prevents message loss, avoids blocking healthy traffic, and enables manual investigation when necessary.
-
-
-
-### Why Idempotency?
-
-Distributed systems must tolerate duplicate message delivery. Relay uses unique request identifiers to ensure repeated requests do not produce duplicate notifications.
-
-
-
-### Why Prometheus & Grafana?
-
-Operational visibility is essential in distributed systems. Prometheus collects application metrics while Grafana visualizes throughput, worker health, retry rates, consumer lag, and overall platform performance.
-
-
-
-### Why Docker?
-
-Docker provides a consistent runtime environment across development and deployment, simplifying local setup and making the platform easier to deploy and scale.
-
-
-
-
-## 📊 Observability & Monitoring
-
-Relay was designed with observability as a first-class concern to provide operational visibility into distributed message processing.
-
-### Metrics Collected
-
-- Notification throughput
-- Kafka consumer lag
-- Worker health status
-- Retry count
-- Dead Letter Queue (DLQ) activity
-- Failed notification count
-- Processing latency
-
-### Monitoring Stack
-
-- **Prometheus** collects application and infrastructure metrics.
-- **Grafana** visualizes dashboards for real-time monitoring and operational insights.
-
-This enables engineers to identify processing bottlenecks, monitor worker performance, detect message failures, and analyze overall system health.
-
-## 📋 Prerequisites
-
-Before running Relay locally, ensure the following tools are installed:
-
-- Node.js 18+
-- Docker Desktop
-- Apache Kafka
-- MongoDB
-- Git
-
-## 🚀 Quick Start
-
-### Clone the Repository
+Ensure Docker and Node.js are installed on your machine.
 
 ```bash
-git clone https://github.com/Manikanta-kovvuri/relay.git
-
-cd relay
-```
-
-### Install Dependencies
-
-```bash
+# 1. Install dependencies
 npm install
+
+# 2. Launch infrastructure (Kafka, Zookeeper, Mongo, Redis, Prometheus, Grafana)
+docker compose up -d
+
+# 3. Format and Lint code
+npm run format
+npm run lint
+
+# 4. Run tests and view coverage
+npm test -- --coverage
 ```
 
-### Start the Platform
+## Docker Architecture
 
-```bash
-docker compose up --build
-```
+- `api`: Exposes port 3000. Handles JWT ingestion and persists notifications.
+- `worker`: Consumes Kafka topic `notifications`. Operates out of bounds.
+- `kafka` / `zookeeper`: The confluentinc cp-kafka broker managing asynchronous distribution.
+- `mongo`: Persistent state for models, preferences, and idempotency logic.
+- `redis`: Distributed in-memory data store for the rate limiter.
+- `prometheus`: Scrapes `/metrics` endpoints.
+- `grafana`: Exposes port 3001. Visualizes scraped Prometheus metrics.
 
-This launches:
+## Engineering Decisions
 
-- Notification API
-- Kafka
-- Zookeeper
-- Worker Services
-- MongoDB
-- Prometheus
-- Grafana
+**1. Why Kafka instead of synchronous processing?**
+Synchronous delivery cascades external provider latencies and failures directly to the end-user. Kafka durably records the intent allowing the API to return immediately while workers execute the HTTP network boundary async.
 
+**2. Why consumer groups?**
+Consumer groups allow us to spin up 5 worker instances. Kafka handles routing partitions so that no single worker handles the entire load, and messages are not double-processed across healthy instances.
 
+**3. Why at-least-once instead of exactly-once?**
+Exactly-once in Kafka is highly complex and requires transactional outbox patterns extending into MongoDB. At-least-once guarantees delivery, while simple application-level idempotency inside MongoDB mitigates the duplicates.
 
-## 📬 API Example
+**4. Why application-level idempotency?**
+Idempotency handles network retries perfectly. If the client gets a 500 error but the database committed, the client naturally retries. Relay recognizes the `requestId` and safely returns 200 OK without re-triggering side effects.
 
-### Send Notification
+**5. Why a DLQ?**
+Infinite retry loops consume massive overhead. After exponential backoffs hit the ceiling, we route failures to DLQ to clear the pipeline and allow for manual inspection.
 
-**Endpoint**
+**6. Why Prometheus instead of putting tenant IDs into metrics?**
+High cardinality labels (like UUIDs or distinct `tenantId`s) explode Prometheus memory usage. These values belong strictly in structured Pino logs.
 
-```http
-POST /api/send
-```
+**7. How does the retry scheduler remain safe with multiple workers?**
+Every worker runs an internal interval loop. However, they use MongoDB's `findOneAndUpdate` to atomically lease the retry row, switching it from `RETRYING` to `RETRY_PUBLISHING`. Only the victor of that race condition actually publishes to Kafka.
 
-**Request**
+## Performance / Scalability
 
+While benchmark numbers have not yet been formally established, Relay scales on two distinct vectors:
+- **API Scaling**: Totally stateless. Bounded only by MongoDB ingest limits and Redis counter capacity.
+- **Worker Scaling**: Bounded by Kafka partitions. You can increase the partition count of the `notifications` topic to instantly linearly scale worker throughput.
+
+## Security
+
+- **JWT**: Passed exclusively via `Authorization: Bearer <token>`.
+- **Bcrypt**: Prevents compromised databases from revealing plain-text passwords.
+- **RBAC**: Restricts administrative endpoints.
+- **Tenant Isolation**: Every database query rigidly enforces the extracted `tenantId`.
+- **Rate Limiting**: Throttles malicious brute-force or noisy-neighbor ingestion.
+- **Helmet**: Secures underlying Express HTTP headers.
+- **No committed secrets**: Passwords/keys only exist inside environment variables (`process.env`).
+
+## API
+
+### `POST /api/auth/register`
+Creates a user and assigns a tenant boundary.
+
+### `POST /api/auth/login`
+Returns a JWT token.
+
+### `GET /api/notifications/debug`
+*(Admin Only)* Returns raw notification histories for the tenant.
+
+### `POST /api/notifications/send`
+Validates limits, ensures idempotency, and enqueues a message.
+**Request**:
 ```json
 {
-  "requestId": "123",
-  "to": "user@gmail.com",
-  "message": "Hello",
-  "channel": "email"
+  "requestId": "unique-uuid-1234",
+  "to": "user@example.com",
+  "message": "Hello from Relay!",
+  "channel": "EMAIL"
 }
 ```
-
-**Response**
-
+**Response (200 OK / 201 Created)**:
 ```json
 {
   "success": true,
-  "id": "xyz123"
+  "id": "6a847ce5d4dfe382db36cdac"
 }
 ```
 
+### `GET /health`
+Returns 200 OK if Node's event loop is functioning.
 
-## 🛣️ Future Enhancements
+### `GET /ready`
+Returns 200 OK if Kafka, MongoDB, and Redis are explicitly connected and responsive, or 503 if disconnected.
 
-- API Gateway
-- Kubernetes deployment
-- Distributed rate limiting using Redis
-- Exponential backoff retry strategy
-- OpenTelemetry distributed tracing
-- Notification scheduling
-- Multi-region deployment
-- CI/CD pipeline with GitHub Actions
+## Roadmap / Future Enhancements
 
+*Future additions under consideration:*
+- Real integration bindings (e.g. AWS SES, Twilio, Firebase).
+- OpenTelemetry distributed tracing (Zipkin / Jaeger).
+- Kubernetes Helm charts deployment.
+- Enhanced provider-level batching.
 
+## License
 
-## 📄 License
-
-Licensed under the MIT License.
+ISC License. See `package.json` for details.

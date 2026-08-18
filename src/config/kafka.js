@@ -14,6 +14,13 @@ if (!isRailway) {
 
   producer = kafka.producer();
   consumer = kafka.consumer({ groupId: "notification-workers" });
+
+  producer.on(producer.events.CONNECT, () => {
+    producer.isConnected = true;
+  });
+  producer.on(producer.events.DISCONNECT, () => {
+    producer.isConnected = false;
+  });
 }
 
 module.exports = { kafka, producer, consumer };
