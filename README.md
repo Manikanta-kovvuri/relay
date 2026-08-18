@@ -44,36 +44,36 @@ Relay separates ingestion from delivery. It safely persists the notification int
 
 ```mermaid
 flowchart TD
-    Client([Client])
-    API[Relay API (Express)]
-    Auth[JWT / RBAC Middleware]
-    RateLimiter[Redis Rate Limiter]
-    DB[(MongoDB)]
-    Kafka[Kafka Broker]
-    Worker[Relay Worker(s)]
-    Providers[Provider Strategies (Email, SMS)]
-    Metrics[Prometheus & Grafana]
+    Client(["Client"])
+    API["Relay API (Express)"]
+    Auth["JWT / RBAC Middleware"]
+    RateLimiter["Redis Rate Limiter"]
+    DB[("MongoDB")]
+    Kafka["Kafka Broker"]
+    Worker["Relay Worker(s)"]
+    Providers["Provider Strategies (Email, SMS)"]
+    Metrics["Prometheus & Grafana"]
 
-    Client -->|POST /send| API
+    Client -->|"POST /send"| API
     API --> Auth
     Auth --> RateLimiter
-    RateLimiter -->|Check Limits| Redis[(Redis)]
-    RateLimiter -->|Idempotency Check| DB
-    API -->|Save Notification| DB
-    API -->|Publish Event| Kafka
+    RateLimiter -->|"Check Limits"| Redis[("Redis")]
+    RateLimiter -->|"Idempotency Check"| DB
+    API -->|"Save Notification"| DB
+    API -->|"Publish Event"| Kafka
 
-    Kafka -->|Consume (Group)| Worker
-    Worker -->|Read Preferences/Templates| DB
-    Worker -->|Route| Providers
-    Providers -->|Success / Fail| DB
+    Kafka -->|"Consume (Group)"| Worker
+    Worker -->|"Read Preferences/Templates"| DB
+    Worker -->|"Route"| Providers
+    Providers -->|"Success / Fail"| DB
 
-    Worker -.->|Update Metrics| Metrics
-    API -.->|Update Metrics| Metrics
+    Worker -.->|"Update Metrics"| Metrics
+    API -.->|"Update Metrics"| Metrics
 
-    subgraph Retry Architecture
-        WorkerScheduler[Retry Scheduler]
-        WorkerScheduler -->|Atomic Lease| DB
-        WorkerScheduler -->|Publish Retry| Kafka
+    subgraph RetryArchitecture ["Retry Architecture"]
+        WorkerScheduler["Retry Scheduler"]
+        WorkerScheduler -->|"Atomic Lease"| DB
+        WorkerScheduler -->|"Publish Retry"| Kafka
     end
 ```
 
